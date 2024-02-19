@@ -20,6 +20,7 @@
   annotate every time.
 - Default `eds.ner_crf` window is now set to 40 and stride set to 20, as it doesn't
   affect throughput (compared to before, window set to 20) and improves accuracy.
+- New `overlap_policy='merge'` option in `eds.span_sentence_getter`
 
 ### Fixed
 

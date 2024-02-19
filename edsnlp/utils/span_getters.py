@@ -1,8 +1,8 @@
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Sequence, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Sequence, Union
 
-from rich.text import Span
-from spacy.tokens import Doc
+from spacy.tokens import Doc, Span
+from typing_extensions import Literal
 
 from edsnlp import registry
 from edsnlp.utils.filter import filter_spans
@@ -239,21 +239,60 @@ if TYPE_CHECKING:
     ]
 
 
+def merge_spans(spans: Iterable[Span]) -> List[Span]:
+    """
+    Merge overlapping spans into a single span.
+
+    Parameters
+    ----------
+    spans : List[Span]
+        List of spans to merge.
+    doc : Doc
+        Document to merge the spans on.
+
+    Returns
+    -------
+    List[Span]
+        Merged spans.
+    """
+    spans = sorted(spans, key=lambda x: (x.start, x.end))
+    merged = []
+    for span in spans:
+        if len(merged) and span.start <= merged[-1].end:
+            if span.end > merged[-1].end:
+                merged[-1] = Span(
+                    span.doc,
+                    merged[-1].start,
+                    span.end,
+                    merged[-1].label_,
+                )
+        else:
+            merged.append(span)
+    return merged
+
+
 @registry.misc.register("eds.span_sentence_getter")
 class make_span_sentence_getter:
     def __init__(
         self,
         span_getter: SpanGetterArg,
         min_context_words: int = 0,
+        overlap_policy: Literal["filter", "merge"] = "merge",
     ):
         self.min_context_words = min_context_words
+        self.overlap_policy = overlap_policy
         self.span_getter = span_getter
 
-    def __call__(self, doc: Doc):
+    def __call__(self, doc: Doc) -> List[Span]:
         ctx = self.min_context_words
         spans = (
-            doc[min(e[0].sent.start, e.start - ctx) : max(e[-1].sent.end, e.end + ctx)]
+            doc[
+                max(0, min(e[0].sent.start, e.start - ctx)) : max(
+                    e[-1].sent.end, e.end + ctx
+                )
+            ]
             for e in get_spans(doc, self.span_getter)
         )
-
-        return filter_spans(spans)
+        if self.overlap_policy == "filter":
+            return filter_spans(spans)
+        return merge_spans(spans)
